@@ -55,21 +55,21 @@ ASR_MODELS = {
 }
 
 LLM_MODELS = {
-    "qwen2.5-0.5b": {
-        "id": "qwen2.5-0.5b",
-        "name": "Qwen2.5 0.5B Instruct",
-        "description": "Ultra fast, good Chinese/English support. Q4_K_M quantization.",
-        "size_mb": 400,
-        "filename": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
-        "url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+    "qwen3-0.6b": {
+        "id": "qwen3-0.6b",
+        "name": "Qwen3 0.6B",
+        "description": "Latest Qwen3 (Apr 2025). Ultra fast, thinking/non-thinking modes. Q8_0.",
+        "size_mb": 639,
+        "filename": "Qwen3-0.6B-Q8_0.gguf",
+        "url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf",
     },
-    "qwen2.5-1.5b": {
-        "id": "qwen2.5-1.5b",
-        "name": "Qwen2.5 1.5B Instruct",
-        "description": "Better quality, still fast. Q4_K_M quantization.",
+    "qwen3-1.7b": {
+        "id": "qwen3-1.7b",
+        "name": "Qwen3 1.7B",
+        "description": "Qwen3 (Apr 2025). Better quality, still fast. Q4_K_M quantization.",
         "size_mb": 1100,
-        "filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-        "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "filename": "Qwen_Qwen3-1.7B-Q4_K_M.gguf",
+        "url": "https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf",
     },
     "none": {
         "id": "none",

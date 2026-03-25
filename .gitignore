@@ -22,3 +22,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Rust / Tauri
+src-tauri/target/
+
+# Python sidecar
+python-sidecar/venv/
+python-sidecar/__pycache__/
+python-sidecar/*.pyc
+python-sidecar/test_llm*.py
+
+# macOS
+*.dmg
+
+# Models (downloaded at runtime, too large for git)
+models/

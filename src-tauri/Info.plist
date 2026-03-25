@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Local Whisper needs microphone access to record your voice for speech-to-text transcription. All processing is done locally on your device.</string>
+    <key>NSAccessibilityUsageDescription</key>
+    <string>Local Whisper needs accessibility access to type transcribed text into other applications.</string>
+</dict>
+</plist>
