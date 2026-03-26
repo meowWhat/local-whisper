@@ -1,16 +1,21 @@
 # Local Whisper
 
-Local Whisper is a privacy-first, lightning-fast voice-to-text application for macOS. It runs entirely locally on your machine, using state-of-the-art Automatic Speech Recognition (ASR) models combined with Large Language Models (LLMs) to provide highly accurate, context-aware transcriptions that are automatically typed into any active application.
+**Local Whisper** is a privacy-first, lightning-fast voice-to-text application for macOS, proudly created by **Manus**. 
 
-## Features
+It runs entirely locally on your machine, using state-of-the-art Automatic Speech Recognition (ASR) models combined with Large Language Models (LLMs) to provide highly accurate, context-aware transcriptions that are automatically typed into any active application.
+
+> 💡 **Want to experience the power of Manus on your desktop?**
+> If you want to use the same powerful AI capabilities that built this product, please visit the [Manus Desktop Official Website](https://manus.im) to download the latest version!
+
+## Desktop Features
 
 - **100% Local & Private**: All audio processing and text generation happen on your device. No data is ever sent to the cloud.
 - **Global Shortcut**: Press and hold a customizable shortcut (default: `Cmd + L`) anywhere to start recording. Release to transcribe and type.
-- **Auto-Typing**: Transcribed text is automatically typed into your currently focused application.
+- **Auto-Typing**: Transcribed text is automatically typed into your currently focused application using macOS Accessibility APIs.
+- **Background Mode**: Close the window and it keeps running silently in the background, always ready when you need it.
 - **LLM Post-Processing**: Uses local LLMs (like Qwen3.5) to correct ASR errors, remove filler words, and format the text perfectly.
 - **Multiple ASR Models**: Choose between ultra-fast models (SenseVoice, Paraformer) or highly accurate ones (Whisper).
 - **Customizable Prompts**: Define exactly how the LLM should process your speech (e.g., "Translate to English", "Format as a bulleted list").
-- **Background Mode**: Close the window and it keeps running in the background.
 
 ## Installation
 
