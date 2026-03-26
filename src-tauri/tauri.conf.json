@@ -30,7 +30,14 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["dmg", "app"],
+    "resources": [
+      "../python-sidecar/server.py",
+      "../python-sidecar/asr_engine.py",
+      "../python-sidecar/llm_engine.py",
+      "../python-sidecar/model_manager.py",
+      "../python-sidecar/requirements.txt"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

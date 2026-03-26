@@ -19,7 +19,7 @@ ASR_MODELS = {
     "sensevoice-small": {
         "id": "sensevoice-small",
         "name": "SenseVoice Small",
-        "description": "FunASR SenseVoice - Ultra fast, 70ms/10s audio. Non-autoregressive.",
+        "description": "FunASR SenseVoice - Ultra fast, 70ms/10s audio. Non-autoregressive. 234MB.",
         "size_mb": 230,
         "files": {
             "model.onnx": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2",
@@ -28,10 +28,11 @@ ASR_MODELS = {
         "archive_name": "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
         "engine": "sherpa-onnx",
     },
+
     "paraformer-small": {
         "id": "paraformer-small",
         "name": "Paraformer (FunASR)",
-        "description": "FunASR Paraformer - Good accuracy, fast speed. Non-autoregressive.",
+        "description": "FunASR Paraformer - Good accuracy, fast speed. Non-autoregressive. 220MB.",
         "size_mb": 220,
         "files": {
             "model.onnx": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-paraformer-zh-2023-09-14.tar.bz2",
@@ -43,7 +44,7 @@ ASR_MODELS = {
     "whisper-tiny": {
         "id": "whisper-tiny",
         "name": "Whisper Tiny",
-        "description": "OpenAI Whisper Tiny - Lightweight, 99+ languages.",
+        "description": "OpenAI Whisper Tiny - Lightweight, 99+ languages. 120MB.",
         "size_mb": 120,
         "files": {
             "model.onnx": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2",
@@ -55,10 +56,26 @@ ASR_MODELS = {
 }
 
 LLM_MODELS = {
+    "qwen3.5-2b": {
+        "id": "qwen3.5-2b",
+        "name": "Qwen3.5 2B (Recommended)",
+        "description": "Latest Qwen3.5 (Mar 2026). Best quality for text post-processing. Q4_K_M. 1.3GB.",
+        "size_mb": 1280,
+        "filename": "Qwen3.5-2B-Q4_K_M.gguf",
+        "url": "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf",
+    },
+    "qwen3.5-0.8b": {
+        "id": "qwen3.5-0.8b",
+        "name": "Qwen3.5 0.8B",
+        "description": "Qwen3.5 (Mar 2026). Lightweight, fast but less accurate. Q4_K_M. 533MB.",
+        "size_mb": 533,
+        "filename": "Qwen3.5-0.8B-Q4_K_M.gguf",
+        "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
+    },
     "qwen3-0.6b": {
         "id": "qwen3-0.6b",
         "name": "Qwen3 0.6B",
-        "description": "Latest Qwen3 (Apr 2025). Ultra fast, thinking/non-thinking modes. Q8_0.",
+        "description": "Qwen3 (Apr 2025). Ultra fast, thinking/non-thinking modes. Q8_0.",
         "size_mb": 639,
         "filename": "Qwen3-0.6B-Q8_0.gguf",
         "url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf",
@@ -115,7 +132,11 @@ class ModelManager:
         model_dir = self.asr_dir / model_id
         if info.get("archive"):
             return (model_dir / info["archive_name"]).exists()
-        return model_dir.exists()
+        # For non-archive models, check if all files exist
+        for file_key in info["files"]:
+            if not (model_dir / file_key).exists():
+                return False
+        return True
 
     def _is_llm_downloaded(self, model_id: str) -> bool:
         info = LLM_MODELS.get(model_id)
@@ -171,6 +192,7 @@ class ModelManager:
                 await proc.wait()
                 archive_path.unlink(missing_ok=True)
             else:
+                # Download individual files directly
                 await self._download_file(url, model_dir / file_key)
 
         self._download_progress = {"status": "done", "model_id": model_id}

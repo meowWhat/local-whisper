@@ -26,4 +26,4 @@ export const DEFAULT_LLM_PROMPT = `你是一个语音转文字的后处理助手
 
 只输出优化后的文本，不要输出任何其他内容。`;
 
-export const DEFAULT_HOTKEY = "Alt+Space";
+export const DEFAULT_HOTKEY = "CommandOrControl+L";

@@ -4,13 +4,19 @@ import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
 import { emit } from "@tauri-apps/api/event";
 import Console from "./pages/Console";
 import Settings from "./pages/Settings";
+import Onboarding from "./pages/Onboarding";
 import { checkHealth, transcribeFile, getSettings, saveHotkey } from "./api";
 import { ConsoleEntry, DEFAULT_HOTKEY } from "./store";
 
 type Tab = "console" | "settings";
 type RecordingStatus = "idle" | "recording" | "processing" | "done" | "error";
 
+const ONBOARDING_KEY = "local-whisper-onboarding-done";
+
 function App() {
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    return !localStorage.getItem(ONBOARDING_KEY);
+  });
   const [activeTab, setActiveTab] = useState<Tab>("settings");
   const [serverOk, setServerOk] = useState(false);
   const [asrLoaded, setAsrLoaded] = useState(false);
@@ -23,14 +29,21 @@ function App() {
   const serverOkRef = useRef(false);
 
   // ---------------------------------------------------------------------------
+  // Onboarding completion
+  // ---------------------------------------------------------------------------
+
+  const handleOnboardingComplete = useCallback(() => {
+    localStorage.setItem(ONBOARDING_KEY, "true");
+    setShowOnboarding(false);
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Overlay window management (via Rust commands - window pre-created in setup)
   // ---------------------------------------------------------------------------
 
   const showOverlay = useCallback(async (overlayStatus: string, text?: string) => {
     try {
-      // First emit the status update so overlay has data when shown
       await emit("overlay-update", { status: overlayStatus, text: text || "" });
-      // Then show the pre-created hidden window
       await invoke("show_overlay");
     } catch (err) {
       console.error("Overlay show error:", err);
@@ -105,12 +118,8 @@ function App() {
       setStatusText("Transcribing...");
       await emit("overlay-update", { status: "processing", text: "" });
 
-      // Stop recording and get WAV path
       const wavPath: string = await invoke("stop_recording");
-
-      // Send to Python sidecar for ASR + LLM
       const result = await transcribeFile(wavPath);
-
       const finalText = result.optimized_text || result.original_text;
 
       if (finalText && finalText.trim()) {
@@ -118,16 +127,10 @@ function App() {
         setStatusText("Typing...");
         await emit("overlay-update", { status: "typing", text: "" });
 
-        // Hide overlay before typing so the target app regains focus
         await hideOverlay();
-
-        // Small delay to ensure focus returns to the target app
         await new Promise((r) => setTimeout(r, 150));
-
-        // Type the text into the currently focused application
         await invoke("type_text", { text: finalText });
 
-        // Log to console
         addLog({
           id: crypto.randomUUID(),
           timestamp: new Date(),
@@ -152,7 +155,6 @@ function App() {
       setTimeout(() => hideOverlay(), 1500);
     }
 
-    // Reset after a short delay
     setTimeout(() => {
       setStatus("idle");
       setStatusText("");
@@ -236,7 +238,15 @@ function App() {
   }, [hotkey, handleStopAndTranscribe, showOverlay, hideOverlay]);
 
   // ---------------------------------------------------------------------------
-  // UI
+  // Render Onboarding if first launch
+  // ---------------------------------------------------------------------------
+
+  if (showOnboarding) {
+    return <Onboarding onComplete={handleOnboardingComplete} hotkey={hotkey} />;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Main UI
   // ---------------------------------------------------------------------------
 
   const tabs: { id: Tab; label: string }[] = [
@@ -252,11 +262,18 @@ function App() {
     error: "bg-red-500",
   }[status];
 
+  const formatDisplay = (accel: string) =>
+    accel
+      .replace(/CommandOrControl/g, "\u2318")
+      .replace(/Shift/g, "\u21E7")
+      .replace(/Alt/g, "\u2325")
+      .replace(/\+/g, " ");
+
   const statusLabel =
     status === "idle"
       ? serverOk
         ? asrLoaded
-          ? `Ready (${hotkey})`
+          ? `Ready (${formatDisplay(hotkey)})`
           : "ASR not loaded"
         : "Backend connecting..."
       : statusText;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   listModels,
   downloadModel,
@@ -15,6 +15,43 @@ interface SettingsProps {
   serverOk: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Keyboard shortcut recorder
+// ---------------------------------------------------------------------------
+
+/** Map browser KeyboardEvent to Tauri accelerator format */
+function keyEventToAccelerator(e: KeyboardEvent): string | null {
+  // Ignore standalone modifier keys
+  if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return null;
+
+  const parts: string[] = [];
+  // On macOS, Meta = Cmd. Use CommandOrControl for cross-platform.
+  if (e.metaKey || e.ctrlKey) parts.push("CommandOrControl");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+
+  // Normalize key name
+  let key = e.key;
+  if (key === " ") key = "Space";
+  else if (key.length === 1) key = key.toUpperCase();
+  else if (key === "ArrowUp") key = "Up";
+  else if (key === "ArrowDown") key = "Down";
+  else if (key === "ArrowLeft") key = "Left";
+  else if (key === "ArrowRight") key = "Right";
+
+  parts.push(key);
+  return parts.join("+");
+}
+
+/** Human-readable display of an accelerator string */
+function formatHotkeyDisplay(accelerator: string): string {
+  return accelerator
+    .replace(/CommandOrControl/g, "\u2318")
+    .replace(/Shift/g, "\u21E7")
+    .replace(/Alt/g, "\u2325")
+    .replace(/\+/g, " + ");
+}
+
 export default function Settings({
   hotkey,
   onHotkeyChange,
@@ -28,12 +65,16 @@ export default function Settings({
   const [error, setError] = useState<string | null>(null);
   const [promptDraft, setPromptDraft] = useState(DEFAULT_LLM_PROMPT);
   const [promptSaved, setPromptSaved] = useState(false);
-  const [hotkeyDraft, setHotkeyDraft] = useState(hotkey);
   const [promptRestored, setPromptRestored] = useState(false);
+
+  // Hotkey recorder state
+  const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
+  const [, setRecordedHotkey] = useState<string | null>(null);
+  const hotkeyBtnRef = useRef<HTMLButtonElement>(null);
 
   // Sync hotkeyDraft when hotkey prop changes (e.g. restored from backend)
   useEffect(() => {
-    setHotkeyDraft(hotkey);
+    setRecordedHotkey(null);
   }, [hotkey]);
 
   const fetchModels = useCallback(async () => {
@@ -96,6 +137,40 @@ export default function Settings({
     return () => clearInterval(interval);
   }, [downloading, fetchModels]);
 
+  // Hotkey recording: listen for keydown when recording mode is active
+  useEffect(() => {
+    if (!isRecordingHotkey) return;
+
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const accel = keyEventToAccelerator(e);
+      if (!accel) return; // Ignore standalone modifier
+
+      setRecordedHotkey(accel);
+      setIsRecordingHotkey(false);
+
+      // Auto-apply
+      onHotkeyChange(accel);
+    };
+
+    const cancelHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setIsRecordingHotkey(false);
+        setRecordedHotkey(null);
+      }
+    };
+
+    window.addEventListener("keydown", handler, true);
+    window.addEventListener("keydown", cancelHandler, true);
+    return () => {
+      window.removeEventListener("keydown", handler, true);
+      window.removeEventListener("keydown", cancelHandler, true);
+    };
+  }, [isRecordingHotkey, onHotkeyChange]);
+
   const handleDownload = async (type: string, id: string) => {
     setDownloading(id);
     setDownloadPct(0);
@@ -135,10 +210,6 @@ export default function Settings({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     }
-  };
-
-  const handleSaveHotkey = () => {
-    onHotkeyChange(hotkeyDraft);
   };
 
   const renderModelCard = (
@@ -246,30 +317,45 @@ export default function Settings({
           </div>
         )}
 
-        {/* Hotkey section */}
+        {/* Hotkey section — keyboard recorder */}
         <section>
           <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">
             Hotkey
           </h3>
           <div className="flex items-center gap-3">
-            <input
-              type="text"
-              value={hotkeyDraft}
-              onChange={(e) => setHotkeyDraft(e.target.value)}
-              placeholder="e.g. Alt+Space"
-              className="flex-1 text-sm bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-blue-500/50"
-            />
             <button
-              onClick={handleSaveHotkey}
-              disabled={hotkeyDraft === hotkey}
-              className="text-xs px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-30"
+              ref={hotkeyBtnRef}
+              onClick={() => {
+                setIsRecordingHotkey(true);
+                setRecordedHotkey(null);
+              }}
+              className={`flex-1 text-left text-sm bg-zinc-900 border rounded-lg px-4 py-2.5 transition-all ${
+                isRecordingHotkey
+                  ? "border-blue-500 ring-1 ring-blue-500/30 text-blue-400"
+                  : "border-zinc-800 text-zinc-200 hover:border-zinc-700"
+              }`}
             >
-              Apply
+              {isRecordingHotkey ? (
+                <span className="animate-pulse">Press your shortcut keys...</span>
+              ) : (
+                <span className="font-mono tracking-wide">
+                  {formatHotkeyDisplay(hotkey)}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => onHotkeyChange(DEFAULT_HOTKEY)}
+              className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors px-2 py-1"
+            >
+              Reset
             </button>
           </div>
           <p className="text-[10px] text-zinc-600 mt-1.5">
-            Press and hold this key combination in any app to record. Release to
-            transcribe and type. Default: {DEFAULT_HOTKEY}
+            Click the box above, then press your desired key combination.
+            Press and hold in any app to record, release to transcribe.
+            {isRecordingHotkey && (
+              <span className="text-blue-400 ml-1">Press Esc to cancel.</span>
+            )}
           </p>
         </section>
 

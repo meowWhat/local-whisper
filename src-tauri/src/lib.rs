@@ -24,20 +24,29 @@ struct RecordingState {
 
 fn find_sidecar_dir() -> Option<PathBuf> {
     let candidates: Vec<PathBuf> = [
+        // Dev mode: python-sidecar next to CWD
         std::env::current_dir().ok().map(|p| p.join("python-sidecar")),
         std::env::current_dir()
             .ok()
             .and_then(|p| p.parent().map(|pp| pp.join("python-sidecar"))),
+        // Dev mode: python-sidecar next to binary
         std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|pp| pp.join("python-sidecar"))),
         std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().and_then(|pp| pp.parent()).map(|pp| pp.join("python-sidecar"))),
+        // Bundled .app: Contents/Resources/python-sidecar
         std::env::current_exe().ok().and_then(|p| {
             p.parent()
                 .and_then(|pp| pp.parent())
                 .map(|pp| pp.join("Resources").join("python-sidecar"))
+        }),
+        // Tauri bundles "../python-sidecar" as "Resources/_up_/python-sidecar"
+        std::env::current_exe().ok().and_then(|p| {
+            p.parent()
+                .and_then(|pp| pp.parent())
+                .map(|pp| pp.join("Resources").join("_up_").join("python-sidecar"))
         }),
     ]
     .into_iter()
@@ -54,36 +63,146 @@ fn find_sidecar_dir() -> Option<PathBuf> {
     None
 }
 
-fn start_python_sidecar() -> Option<std::process::Child> {
-    if let Ok(resp) = std::process::Command::new("curl")
-        .args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "http://127.0.0.1:11435/api/health"])
-        .output()
-    {
-        if String::from_utf8_lossy(&resp.stdout).trim() == "200" {
-            println!("[sidecar] Already running on port 11435");
-            return None;
+/// Get the app data directory for storing venv and other runtime data.
+fn get_app_data_dir() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    let base = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("Library")
+        .join("Application Support")
+        .join("local-whisper");
+    #[cfg(not(target_os = "macos"))]
+    let base = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join(".local")
+        .join("share")
+        .join("local-whisper");
+    let _ = std::fs::create_dir_all(&base);
+    base
+}
+
+/// Ensure Python venv exists and dependencies are installed.
+/// Returns the path to the Python interpreter to use.
+fn ensure_venv(sidecar_dir: &PathBuf) -> PathBuf {
+    let app_data = get_app_data_dir();
+    let venv_dir = app_data.join("venv");
+    let venv_py = venv_dir.join("bin").join("python3");
+
+    // Dev mode: check for venv inside the sidecar dir first
+    let dev_venv_py = sidecar_dir.join("venv").join("bin").join("python3");
+    if dev_venv_py.exists() {
+        println!("[sidecar] Using dev venv: {:?}", dev_venv_py);
+        return dev_venv_py;
+    }
+
+    // Production: use venv in app data directory
+    if venv_py.exists() {
+        println!("[sidecar] Venv exists at: {:?}", venv_dir);
+        // Check if deps are installed by looking for uvicorn
+        let uvicorn_check = std::process::Command::new(&venv_py)
+            .args(["-c", "import uvicorn"])
+            .output();
+        match uvicorn_check {
+            Ok(o) if o.status.success() => return venv_py,
+            _ => println!("[sidecar] Venv exists but deps missing, reinstalling..."),
         }
     }
 
-    let dir = find_sidecar_dir()?;
-    let venv_py = dir.join("venv").join("bin").join("python3");
-    let python = if venv_py.exists() {
-        venv_py.to_string_lossy().to_string()
-    } else {
-        "python3".to_string()
-    };
+    // Create venv if it doesn't exist
+    if !venv_py.exists() {
+        println!("[sidecar] Creating venv at: {:?}", venv_dir);
+        let status = std::process::Command::new("python3")
+            .args(["-m", "venv"])
+            .arg(&venv_dir)
+            .status();
+        match status {
+            Ok(s) if s.success() => println!("[sidecar] Venv created"),
+            Ok(s) => {
+                eprintln!("[sidecar] Venv creation exited with: {}", s);
+                // Fallback to system python
+                return PathBuf::from("python3");
+            }
+            Err(e) => {
+                eprintln!("[sidecar] Failed to create venv: {}", e);
+                return PathBuf::from("python3");
+            }
+        }
+    }
 
-    println!("[sidecar] Starting: {} server.py", python);
-    let child = std::process::Command::new(&python)
-        .arg(dir.join("server.py").to_string_lossy().as_ref())
-        .arg("11435")
-        .current_dir(&dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .ok()?;
-    println!("[sidecar] PID: {}", child.id());
-    Some(child)
+    // Install dependencies
+    let req_file = sidecar_dir.join("requirements.txt");
+    if req_file.exists() {
+        println!("[sidecar] Installing dependencies (this may take a few minutes on first run)...");
+        let pip = venv_dir.join("bin").join("pip");
+        let output = std::process::Command::new(&pip)
+            .args(["install", "--upgrade", "pip"])
+            .output();
+        if let Err(e) = output {
+            eprintln!("[sidecar] pip upgrade failed: {}", e);
+        }
+
+        let status = std::process::Command::new(&pip)
+            .args(["install", "-r"])
+            .arg(&req_file)
+            .output();
+        match status {
+            Ok(o) if o.status.success() => println!("[sidecar] Dependencies installed"),
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                eprintln!("[sidecar] pip install failed: {}", stderr);
+            }
+            Err(e) => eprintln!("[sidecar] Failed to run pip: {}", e),
+        }
+    }
+
+    venv_py
+}
+
+/// Start the Python sidecar in a background thread.
+/// Returns immediately so the UI is not blocked.
+fn start_python_sidecar_async(sidecar_state: Arc<Mutex<SidecarState>>) {
+    std::thread::spawn(move || {
+        // Check if already running
+        if let Ok(resp) = std::process::Command::new("curl")
+            .args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "http://127.0.0.1:11435/api/health"])
+            .output()
+        {
+            if String::from_utf8_lossy(&resp.stdout).trim() == "200" {
+                println!("[sidecar] Already running on port 11435");
+                return;
+            }
+        }
+
+        let dir = match find_sidecar_dir() {
+            Some(d) => d,
+            None => {
+                eprintln!("[sidecar] Could not find python-sidecar directory");
+                return;
+            }
+        };
+
+        let python = ensure_venv(&dir);
+        let python_str = python.to_string_lossy().to_string();
+
+        println!("[sidecar] Starting: {} server.py", python_str);
+        match std::process::Command::new(&python_str)
+            .arg(dir.join("server.py").to_string_lossy().as_ref())
+            .arg("11435")
+            .current_dir(&dir)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => {
+                println!("[sidecar] PID: {}", child.id());
+                let mut guard = sidecar_state.lock().unwrap();
+                guard.child = Some(child);
+            }
+            Err(e) => {
+                eprintln!("[sidecar] Failed to start: {}", e);
+            }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -376,9 +495,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
-            // Start Python sidecar
-            let child = start_python_sidecar();
-            app.manage(Mutex::new(SidecarState { child }));
+            // Create sidecar state and share it with the background thread
+            let sidecar_state = Arc::new(Mutex::new(SidecarState { child: None }));
+            app.manage(sidecar_state.clone());
+
+            // Start Python sidecar in background thread (non-blocking)
+            // This allows the UI to show immediately while venv setup happens
+            start_python_sidecar_async(sidecar_state);
 
             // Initialize recording state
             app.manage(RecordingState {
@@ -424,16 +547,27 @@ pub fn run() {
             hide_overlay,
         ])
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                if window.label() == "main" {
-                    let app = window.app_handle();
-                    let state = app.state::<Mutex<SidecarState>>();
-                    let mut guard = state.lock().unwrap();
-                    if let Some(ref mut child) = guard.child {
-                        println!("[sidecar] Killing PID: {}", child.id());
-                        let _ = child.kill();
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    if window.label() == "main" {
+                        // Hide the window instead of closing it (macOS standard behavior)
+                        api.prevent_close();
+                        let _ = window.hide();
+                        println!("[window] Main window hidden (use Cmd+Q to quit)");
                     }
                 }
+                tauri::WindowEvent::Destroyed => {
+                    if window.label() == "main" {
+                        let app = window.app_handle();
+                        let state = app.state::<Arc<Mutex<SidecarState>>>();
+                        let mut guard = state.lock().unwrap();
+                        if let Some(ref mut child) = guard.child {
+                            println!("[sidecar] Killing PID: {}", child.id());
+                            let _ = child.kill();
+                        }
+                    }
+                }
+                _ => {}
             }
         })
         .run(tauri::generate_context!())
