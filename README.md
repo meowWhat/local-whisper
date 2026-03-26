@@ -25,6 +25,8 @@ It runs entirely locally on your machine, using state-of-the-art Automatic Speec
 4. Launch the app. On the first run, it will guide you through granting Microphone and Accessibility permissions.
    - *Note: The first launch may take a few minutes as it sets up the local Python environment and installs dependencies.*
 
+> **macOS Gatekeeper Notice**: Since the app is not notarized with Apple, macOS may show a security warning on first launch. Simply go to **System Settings > Privacy & Security**, scroll down and click **"Open Anyway"** to allow the app to run.
+
 ## Usage
 
 1. **Record**: Press and hold the global shortcut (`Cmd + L` by default) in any application.
